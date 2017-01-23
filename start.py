@@ -10,6 +10,7 @@ import pandas as pd
 import tensorflow as tf
 import cv2
 tf.python.control_flow_ops = tf
+import random
 
 
 def preprocess(folder, fname):
@@ -30,16 +31,37 @@ def preprocess(folder, fname):
   
 
 # generator to get n images, n steering angle from input
-def get_data(fname, num):
+def get_data(folder, df, num, img_shape):
     """ generator to return a small batch of images, labels"""
-    current_row = 0
-    source = pd.read_csv(fname)
+    images = np.array([num] + list(img_shape))
+    labels = np.empty(num,)
     while 1:
-        temp = source.iloc[current_row: current_row + num]
-        current_row += num
-        images = get_images(temp) # need to add get_images
-        labels = np.asarray(temp['steering'])
+        random.seed()
+        count = 0
+        while count < num:
+            next_idx = random.randint(0, len(df)-1)
+            next_row = df.iloc[next_idx]
+            check_val = random.random()
+            if check_val < 0.33: # use left image
+                offset = -0.25
+                position = 'left'
+            elif check_val < 0.67: # use center image
+                offset = 0.0
+                position = 'center'
+            else:
+                offset = 0.25
+                position = 'right'
+            labels[count] = new_row.steering + offset
+            image = cv2.cvtColor(cv2.imread(folder + '//' + next_row[position]), cv2.COLOR_BGR2RGB)
+            # reshape image to match img_shape
+            images[count] = image
+            count += 1
         yield (images, labels)
+
+
+def reverse_image(img):
+    img = img[[[:, ::-1, :]]]
+    return img
 
 
 def create_nn_nvidia(input_shape):
