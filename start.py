@@ -21,7 +21,9 @@ def preprocess(folder, fname):
     rest_data = data[~(data.steering == 0)]
     data = rest_data.append(zero_data)
     data = data.reindex(np.random.permutation(data.index))
-    images = np.array([cv2.imread(folder + '//' + row.center) / 255.0 - 0.5 for index, row in data.iterrows()])
+    images = np.array([cv2.cvtColor(cv2.imread(folder + '//' + row.center),
+                      cv2.COLOR_BGR2RGB) for index, row in data.iterrows()])
+#                      cv2.COLOR_BGR2RGB) / 255.0 - 0.5 for index, row in data.iterrows()])
     labels = np.array([row.steering for index, row in data.iterrows()])
     np.save(folder + r'/images.npy', images)
     np.save(folder + r'/labels.npy', labels)
@@ -45,6 +47,7 @@ def create_nn_nvidia(input_shape):
     # check out https://arxiv.org/pdf/1604.07316v1.pdf
     # https://devblogs.nvidia.com/parallelforall/deep-learning-self-driving-cars/
     model = Sequential()
+    model.add(Lambda(lambda x: x/255 -0.5, input_shape=input_shape)) #normalize image
     model.add(Convolution2D(24, 5, 5,
                             border_mode='valid',
                             subsample=(2, 2),
@@ -66,19 +69,20 @@ def create_nn_nvidia(input_shape):
                             border_mode='valid',
                             subsample=(1, 1)))
     model.add(ELU())
-#    model.add(Dropout(0.25))
+    model.add(Dropout(0.25))
 
     model.add(Flatten())
 
     model.add(Dense(1164))
     model.add(ELU())
+    model.add(Dropout(0.25))
     model.add(Dense(100))
     model.add(ELU())
+    model.add(Dropout(0.25))
     model.add(Dense(50))
     model.add(ELU())
     model.add(Dense(10))
     model.add(ELU())
-
 
     # final layer - output is a single digit (steering angle)
     model.add(Dense(1))
@@ -147,6 +151,12 @@ def train_nn(model, train_features, train_labels, batch_size, n_epoch):
     return model, history
 
 
+def load_model(fname, model):
+    model.compile(loss='mean_squared_error', optimizer='adam',
+                  metrics=['accuracy', 'mean_squared_error'])
+    weights = model.load_weights(fname)
+    return model
+    
 def export_nn(model):
     """ saves the model and weights"""
     model_json = model.to_json()
@@ -164,12 +174,12 @@ def run_nn():
     model = create_nn_nvidia(input_shape)
     print("Done creating model")
     model.summary()
-    model, history = train_nn(model, X_train, y_train, 128, 3) # batch size of 64, 5 epochs
+    model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
     print("Done training model")
     export_nn(model)
     print("Done exporting model")
-    out = model.predictions(X_train)
-    print(np.histogram, out)
+    out = model.predict(X_train)
+    print(np.histogram(out))
 
 
 if __name__ == '__main__':
