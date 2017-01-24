@@ -6,6 +6,7 @@ from keras.layers import Dropout, MaxPooling2D, Convolution2D, Lambda, ELU
 from keras.layers.core import Dense, Activation, Flatten
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras.models import model_from_json
+from keras.optimizers import Adam
 import pandas as pd
 import tensorflow as tf
 import cv2
@@ -31,9 +32,10 @@ def preprocess(folder, fname):
   
 
 # generator to get n images, n steering angle from input
-def get_data(folder, df, num, img_shape):
+
+def get_batch_data(folder, df, num, img_shape):
     """ generator to return a small batch of images, labels"""
-    images = np.array([num] + list(img_shape))
+    images = np.empty([num, img_shape[0], img_shape[1], img_shape[2]])
     labels = np.empty(num,)
     while 1:
         random.seed()
@@ -43,24 +45,25 @@ def get_data(folder, df, num, img_shape):
             next_row = df.iloc[next_idx]
             check_val = random.random()
             if check_val < 0.33: # use left image
-                offset = -0.25
+                offset = 0.25
                 position = 'left'
             elif check_val < 0.67: # use center image
                 offset = 0.0
                 position = 'center'
             else:
-                offset = 0.25
+                offset = -0.25
                 position = 'right'
-            labels[count] = new_row.steering + offset
-            image = cv2.cvtColor(cv2.imread(folder + '//' + next_row[position]), cv2.COLOR_BGR2RGB)
+            labels[count] = next_row.steering + offset
+            image = cv2.imread(folder + '//' + next_row[position].strip())
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            #image = cv2.resize(image, (img_shape[0], img_shape[1]))
             # reshape image to match img_shape
             images[count] = image
             count += 1
-        yield (images, labels)
-
+        yield images, labels
 
 def reverse_image(img):
-    img = img[[[:, ::-1, :]]]
+    img = img[:, ::-1, :]
     return img
 
 
@@ -162,7 +165,9 @@ def create_nn(input_shape):
 
 def train_nn(model, train_features, train_labels, batch_size, n_epoch):
     """ trains the keras model, saves checkpoint data"""
-    model.compile(loss='mean_squared_error', optimizer='adam',
+    adm = Adam(lr=0.00001)
+    log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
+    model.compile(loss='mean_squared_error', optimizer=adm,
                   metrics=['accuracy', 'mean_squared_error'])
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
     early_stop = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=4,
@@ -171,6 +176,22 @@ def train_nn(model, train_features, train_labels, batch_size, n_epoch):
                         verbose=1, validation_split=0.2, batch_size=batch_size,
                         callbacks=[checkpointer, early_stop])
     return model, history
+
+
+def train_nn_gen(model, batch_size, n_epoch):
+    """ trains the keras model, uses generator for images, saves checkpoint data"""
+    adm = Adam(lr=0.00001)
+    log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
+    data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, (160, 320,3))
+    model.compile(loss='mean_squared_error', optimizer=adm,
+                  metrics=['accuracy', 'mean_squared_error'])
+    checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
+    early_stop = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=4,
+                               verbose=1, mode='min')
+    model.fit_generator(data_gen, samples_per_epoch=20000, nb_epoch=n_epoch,
+            callbacks=[checkpointer, early_stop], validation_data=data_gen,
+            nb_val_samples=2000)
+    return model
 
 
 def load_model(fname, model):
@@ -196,12 +217,11 @@ def run_nn():
     model = create_nn_nvidia(input_shape)
     print("Done creating model")
     model.summary()
-    model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
+    #model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
+    model = train_nn_gen(model, 128, 10)
     print("Done training model")
     export_nn(model)
     print("Done exporting model")
-    out = model.predict(X_train)
-    print(np.histogram(out))
 
 
 if __name__ == '__main__':
