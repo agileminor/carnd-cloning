@@ -17,7 +17,7 @@ def preprocess(folder, fname):
     angles"""
     data = pd.read_csv(folder + '//' + fname)
     zero_data = data[data.steering == 0] # take a smaller sample of more numerous zero angles
-    zero_data = zero_data.sample(int(0.05 * len(zero_data)))
+#    zero_data = zero_data.sample(int(0.05 * len(zero_data)))
     rest_data = data[~(data.steering == 0)]
     data = rest_data.append(zero_data)
     data = data.reindex(np.random.permutation(data.index))
