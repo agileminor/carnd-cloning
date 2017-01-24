@@ -33,33 +33,54 @@ def preprocess(folder, fname):
 
 # generator to get n images, n steering angle from input
 
-def get_batch_data(folder, df, num, img_shape):
-    """ generator to return a small batch of images, labels"""
+def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
+    """ generator to return a small batch of images, labels
+    folder: location of simulator data
+    df: DataFrame of driving_log
+    num: number of images in batch
+    img_shape: desired image shape (row, col, c)
+    augment: add data augmentation
+    threshold: used to determine how many small steering angle images to include
+    """
     images = np.empty([num, img_shape[0], img_shape[1], img_shape[2]])
     labels = np.empty(num,)
+    weights = np.empty(num,)
     while 1:
         random.seed()
         count = 0
         while count < num:
             next_idx = random.randint(0, len(df)-1)
             next_row = df.iloc[next_idx]
-            check_val = random.random()
-            if check_val < 0.33: # use left image
-                offset = 0.25
-                position = 'left'
-            elif check_val < 0.67: # use center image
-                offset = 0.0
-                position = 'center'
+            if abs(next_row.steering) < 0.1:
+                check_val = random.random()
             else:
-                offset = -0.25
-                position = 'right'
-            labels[count] = next_row.steering + offset
-            image = cv2.imread(folder + '//' + next_row[position].strip())
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            #image = cv2.resize(image, (img_shape[0], img_shape[1]))
-            # reshape image to match img_shape
-            images[count] = image
-            count += 1
+                check_val = 0.0
+            if check_val < threshold:
+                 check_val = random.random()
+                if augment:
+                    if check_val < 0.33: # use left image
+                        offset = 0.25
+                        position = 'left'
+                    elif check_val < 0.67: # use center image
+                        offset = 0.0
+                        position = 'center'
+                    else:
+                        offset = -0.25
+                        position = 'right'
+                else:
+                    offset = 0.0
+                    position = 'center'
+                labels[count] = next_row.steering + offset
+                image = cv2.imread(folder + '//' + next_row[position].strip())
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                if augment:
+                    check_val = random.random()
+                    if check_val < 0.3:
+                        image = reverse_image(image)
+                #image = cv2.resize(image, (img_shape[0], img_shape[1]))
+                # reshape image to match img_shape
+                images[count] = image
+                count += 1
         yield images, labels
 
 def reverse_image(img):
