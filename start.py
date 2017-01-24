@@ -11,7 +11,6 @@ import pandas as pd
 import tensorflow as tf
 import cv2
 tf.python.control_flow_ops = tf
-import random
 
 
 def preprocess(folder, fname):
@@ -46,17 +45,19 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
     labels = np.empty(num,)
     weights = np.empty(num,)
     while 1:
-        random.seed()
+        np.random.seed()
         count = 0
         while count < num:
-            next_idx = random.randint(0, len(df)-1)
+            next_idx = np.random.randint(0, len(df)-1)
             next_row = df.iloc[next_idx]
             if abs(next_row.steering) < 0.1:
-                check_val = random.random()
+                check_val = np.random.random()
+                weight = 1
             else:
                 check_val = 0.0
+                weight = 10
             if check_val < threshold:
-                 check_val = random.random()
+                 check_val = np.random.random()
                 if augment:
                     if check_val < 0.33: # use left image
                         offset = 0.25
@@ -71,17 +72,18 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
                     offset = 0.0
                     position = 'center'
                 labels[count] = next_row.steering + offset
+                weights[count] = weight
                 image = cv2.imread(folder + '//' + next_row[position].strip())
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 if augment:
-                    check_val = random.random()
+                    check_val = np.random.random()
                     if check_val < 0.3:
                         image = reverse_image(image)
-                #image = cv2.resize(image, (img_shape[0], img_shape[1]))
-                # reshape image to match img_shape
+                        labels[count] = -(next_row.steering + offset)
+                #image = cv2.resize(image, (img_shape[1], img_shape[0])) # resize takes width, height where shape is height, width
                 images[count] = image
                 count += 1
-        yield images, labels
+        yield images, labels, weights
 
 def reverse_image(img):
     img = img[:, ::-1, :]
