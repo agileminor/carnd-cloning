@@ -13,6 +13,16 @@ import cv2
 tf.python.control_flow_ops = tf
 
 
+def get_test_img():
+    test_images = []
+    test_labels = []
+    test_images.append('IMG/center_2016_12_01_13_46_24_718.jpg')
+    test_images.append('IMG/center_2016_12_01_13_37_42_579.jpg')
+    test_images.append('IMG/center_2016_12_01_13_38_06_234.jpg')
+    test_labels.append(-0.2781274)
+    test_labels.append(0.1765823)
+    test_labels.append(-0.107229)
+
 def preprocess(folder, fname):
     """ Creates a binary numpy format output of the steering images and
     angles"""
@@ -29,7 +39,28 @@ def preprocess(folder, fname):
     np.save(folder + r'/images.npy', images)
     np.save(folder + r'/labels.npy', labels)
   
+def add_bright(img):
+    img = cv2.cvtColor(img,cv2.COLOR_RGB2HSV)
+    b_adder = .2 + np.random.uniform()
+    img[:,:,2] = img[:,:,2] * b_adder
+    img = cv2.cvtColor(img, cv2.COLORHSV2RGB)
+    return img
 
+
+def pick_image():
+    check_val = np.random.random()
+    if check_val < 0.33: # use left image
+        offset = 0.25
+        position = 'left'
+    elif check_val < 0.67: # use center image
+        offset = 0.0
+        position = 'center'
+    else:
+        offset = -0.25
+        position = 'right'
+    return position, offset
+
+    
 # generator to get n images, n steering angle from input
 
 def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
@@ -57,17 +88,8 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
                 check_val = 0.0
                 weight = 10
             if check_val < threshold:
-                 check_val = np.random.random()
                 if augment:
-                    if check_val < 0.33: # use left image
-                        offset = 0.25
-                        position = 'left'
-                    elif check_val < 0.67: # use center image
-                        offset = 0.0
-                        position = 'center'
-                    else:
-                        offset = -0.25
-                        position = 'right'
+                    position, offset = pick_image()
                 else:
                     offset = 0.0
                     position = 'center'
@@ -77,13 +99,17 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 if augment:
                     check_val = np.random.random()
-                    if check_val < 0.3:
+                    if check_val < 0.5:
                         image = reverse_image(image)
                         labels[count] = -(next_row.steering + offset)
-                #image = cv2.resize(image, (img_shape[1], img_shape[0])) # resize takes width, height where shape is height, width
+                    #image = add_bright(image)
+                image = image[:-25, :, :]
+                image = cv2.resize(image, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA) 
+                # resize takes width, height where hape is height, width
                 images[count] = image
                 count += 1
-        yield images, labels, weights
+        #yield images, labels, weights
+        yield images, labels
 
 def reverse_image(img):
     img = img[:, ::-1, :]
@@ -117,16 +143,16 @@ def create_nn_nvidia(input_shape):
                             border_mode='valid',
                             subsample=(1, 1)))
     model.add(ELU())
-    model.add(Dropout(0.25))
+    #model.add(Dropout(0.25))
 
     model.add(Flatten())
 
     model.add(Dense(1164))
     model.add(ELU())
-    model.add(Dropout(0.25))
+    #model.add(Dropout(0.25))
     model.add(Dense(100))
     model.add(ELU())
-    model.add(Dropout(0.25))
+    #model.add(Dropout(0.25))
     model.add(Dense(50))
     model.add(ELU())
     model.add(Dense(10))
@@ -203,17 +229,19 @@ def train_nn(model, train_features, train_labels, batch_size, n_epoch):
 
 def train_nn_gen(model, batch_size, n_epoch):
     """ trains the keras model, uses generator for images, saves checkpoint data"""
-    adm = Adam(lr=0.00001)
+    #adm = Adam(lr=0.00001)
+    adm = Adam()
     log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
-    data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, (160, 320,3))
+    data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, (100,
+        200,3), augment=True)
     model.compile(loss='mean_squared_error', optimizer=adm,
                   metrics=['accuracy', 'mean_squared_error'])
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
     early_stop = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=4,
                                verbose=1, mode='min')
-    model.fit_generator(data_gen, samples_per_epoch=20000, nb_epoch=n_epoch,
-            callbacks=[checkpointer, early_stop], validation_data=data_gen,
-            nb_val_samples=2000)
+    model.fit_generator(data_gen, samples_per_epoch=24320, nb_epoch=n_epoch)
+#            callbacks=[checkpointer, early_stop], validation_data=data_gen,
+#            nb_val_samples=800)
     return model
 
 
@@ -236,7 +264,8 @@ def run_nn():
     X_train = np.load("..//simulator//data//images.npy")
     y_train = np.load("..//simulator//data//labels.npy")
     print("Done loading data")
-    input_shape = X_train.shape[1:]
+    #input_shape = X_train.shape[1:]
+    input_shape = (100, 200, 3)
     model = create_nn_nvidia(input_shape)
     print("Done creating model")
     model.summary()
@@ -245,6 +274,14 @@ def run_nn():
     print("Done training model")
     export_nn(model)
     print("Done exporting model")
+    test_img, test_label = get_test_img()
+    for index, fname in enumerate(test_img):
+        image = cv2.imread(folder + '//' + next_row[position].strip())
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = image[:-25, :, :]
+        image = cv2.resize(image, (200, 100), interpolation=cv2.INTER_AREA)
+        result = model.predict(image)
+        print('Result is {}, actual is {}'.format(result, test_label[index]))
 
 
 if __name__ == '__main__':
