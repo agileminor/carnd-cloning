@@ -233,14 +233,16 @@ def train_nn_gen(model, batch_size, n_epoch, img_shape, offset=0.25):
     log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
     data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
                               augment=True, offset=offset)
+    val_data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
+                              augment=True, offset=offset)
     model.compile(loss='mean_squared_error', optimizer=adm,
                   metrics=['accuracy', 'mean_squared_error'])
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
     early_stop = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=4,
                                verbose=1, mode='min')
     model.fit_generator(data_gen, samples_per_epoch=24320, nb_epoch=n_epoch)
-#            callbacks=[checkpointer, early_stop], validation_data=data_gen,
-#            nb_val_samples=800)
+            callbacks=[checkpointer, early_stop], validation_data=val_data_gen,
+            nb_val_samples=2432)
     return model
 
 
