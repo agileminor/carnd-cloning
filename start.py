@@ -14,6 +14,7 @@ tf.python.control_flow_ops = tf
 
 
 def get_test_img():
+    """ 3 test images to see how well the model predicts steering angles"""
     test_images = []
     test_labels = []
     test_images.append('IMG/center_2016_12_01_13_46_24_718.jpg')
@@ -22,6 +23,7 @@ def get_test_img():
     test_labels.append(-0.2781274)
     test_labels.append(0.1765823)
     test_labels.append(-0.107229)
+    return test_images, test_labels
 
 def preprocess(folder, fname):
     """ Creates a binary numpy format output of the steering images and
@@ -34,12 +36,12 @@ def preprocess(folder, fname):
     data = data.reindex(np.random.permutation(data.index))
     images = np.array([cv2.cvtColor(cv2.imread(folder + '//' + row.center),
                       cv2.COLOR_BGR2RGB) for index, row in data.iterrows()])
-#                      cv2.COLOR_BGR2RGB) / 255.0 - 0.5 for index, row in data.iterrows()])
     labels = np.array([row.steering for index, row in data.iterrows()])
     np.save(folder + r'/images.npy', images)
     np.save(folder + r'/labels.npy', labels)
   
 def add_bright(img):
+    """ modify brightness of image by 0.2 - 1.2"""
     img = cv2.cvtColor(img,cv2.COLOR_RGB2HSV)
     b_adder = .2 + np.random.uniform()
     img[:,:,2] = img[:,:,2] * b_adder
@@ -47,23 +49,21 @@ def add_bright(img):
     return img
 
 
-def pick_image():
-    check_val = np.random.random()
-    if check_val < 0.33: # use left image
-        offset = 0.25
+def pick_image(offset=0.25):
+    """ return left, centre or right image with equal distribution"""
+    check_val = np.random.randint(3)
+    if check_val == 0: # use left image
         position = 'left'
-    elif check_val < 0.67: # use center image
+    elif check_val == 1: # use center image
         offset = 0.0
         position = 'center'
-    else:
-        offset = -0.25
+    else: # use right image
+        offset = -offset
         position = 'right'
     return position, offset
 
     
-# generator to get n images, n steering angle from input
-
-def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
+def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, offset=0.25):
     """ generator to return a small batch of images, labels
     folder: location of simulator data
     df: DataFrame of driving_log
@@ -79,7 +79,7 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
         np.random.seed()
         count = 0
         while count < num:
-            next_idx = np.random.randint(0, len(df)-1)
+            next_idx = np.random.randint(len(df))
             next_row = df.iloc[next_idx]
             if abs(next_row.steering) < 0.1:
                 check_val = np.random.random()
@@ -89,7 +89,7 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
                 weight = 10
             if check_val < threshold:
                 if augment:
-                    position, offset = pick_image()
+                    position, offset = pick_image(offset=offset)
                 else:
                     offset = 0.0
                     position = 'center'
@@ -99,13 +99,12 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0):
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 if augment:
                     check_val = np.random.random()
-                    if check_val < 0.5:
+                    if check_val < 0.5: # 50% of the time, return flipped image
                         image = reverse_image(image)
                         labels[count] = -(next_row.steering + offset)
                     #image = add_bright(image)
-                image = image[:-25, :, :]
+                image = image[:-25, :, :] # trim off car hood
                 image = cv2.resize(image, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA) 
-                # resize takes width, height where hape is height, width
                 images[count] = image
                 count += 1
         #yield images, labels, weights
@@ -168,7 +167,7 @@ def create_nn_comma(input_shape):
     """ create a keras model based on comma.ai
     https://github.com/commaai/research"""
     model = Sequential()
-    model.add(Lambda(lambda x: x/127.5 -1., input_shape=input_shape))
+    model.add(Lambda(lambda x: x/255.0 - 0.5, input_shape=input_shape))
     model.add(Convolution2D(16, 8, 8, subsample=(4, 4), border_mode="same"))
     model.add(ELU())
     model.add(Convolution2D(32, 5, 5, subsample=(2, 2), border_mode="same"))
@@ -213,7 +212,7 @@ def create_nn(input_shape):
     return model
 
 def train_nn(model, train_features, train_labels, batch_size, n_epoch):
-    """ trains the keras model, saves checkpoint data"""
+    """ trains the keras model with preloaded data, saves checkpoint data"""
     adm = Adam(lr=0.00001)
     log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
     model.compile(loss='mean_squared_error', optimizer=adm,
@@ -227,13 +226,13 @@ def train_nn(model, train_features, train_labels, batch_size, n_epoch):
     return model, history
 
 
-def train_nn_gen(model, batch_size, n_epoch):
+def train_nn_gen(model, batch_size, n_epoch, img_shape, offset=0.25):
     """ trains the keras model, uses generator for images, saves checkpoint data"""
     #adm = Adam(lr=0.00001)
     adm = Adam()
     log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
-    data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, (100,
-        200,3), augment=True)
+    data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
+                              augment=True, offset=offset)
     model.compile(loss='mean_squared_error', optimizer=adm,
                   metrics=['accuracy', 'mean_squared_error'])
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
@@ -251,28 +250,56 @@ def load_model(fname, model):
     weights = model.load_weights(fname)
     return model
     
-def export_nn(model):
+def export_nn(model, fname):
     """ saves the model and weights"""
     model_json = model.to_json()
-    with open("model.json", 'w') as model_file:
+    with open(fname + ".json", 'w') as model_file:
         model_file.write(model_json)
-    model.save_weights('model.h5')
+    model.save_weights(fname + '.h5')
+
+
+def explore_nn():
+    """ create models to evaluate different parameter values """
+    input_shape = (100, 200, 3)
+    batch_size = 128
+    epochs = 10
+    test_img, test_label = get_test_img()
+    count = 0
+    for offset in np.arange(0, 0.5, 0.05):
+        print('Evaluating offset = {}'.format(offset))
+        model = create_nn_nvidia(input_shape)
+        print("Done creating model")
+        model.summary()
+        model = train_nn_gen(model, batch_size, epochs, input_shape, offset)
+        print("Done training model")
+        export_nn(model, 'model' + str(count)
+        print("Done exporting model")
+        for index, fname in enumerate(test_img):
+            image = cv2.imread(folder + '//' + next_row[position].strip())
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = image[:-25, :, :]
+            image = cv2.resize(image, (200, 100), interpolation=cv2.INTER_AREA)
+            result = model.predict(image)
+            print('Result is {}, actual is {}'.format(result, test_label[index]))
+        count += 1
 
 
 def run_nn():
     # load previously prepared data
-    X_train = np.load("..//simulator//data//images.npy")
-    y_train = np.load("..//simulator//data//labels.npy")
-    print("Done loading data")
+    #X_train = np.load("..//simulator//data//images.npy")
+    #y_train = np.load("..//simulator//data//labels.npy")
+    #print("Done loading data")
     #input_shape = X_train.shape[1:]
-    input_shape = (100, 200, 3)
+    input_shape = (66, 200, 3)
     model = create_nn_nvidia(input_shape)
     print("Done creating model")
     model.summary()
     #model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
-    model = train_nn_gen(model, 128, 10)
+    batch_size = 128
+    epochs = 10
+    model = train_nn_gen(model, batch_size, epochs, input_shape)
     print("Done training model")
-    export_nn(model)
+    export_nn(model, 'model')
     print("Done exporting model")
     test_img, test_label = get_test_img()
     for index, fname in enumerate(test_img):
