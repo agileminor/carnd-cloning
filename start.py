@@ -12,6 +12,31 @@ import tensorflow as tf
 import cv2
 tf.python.control_flow_ops = tf
 
+def shift_image(img, angle, max_shift, retain_shape=False):
+    """ shift image by +/- max_shift in x, +/- 20 in y, and adjust steering angle"""
+    img_shape = img.shape
+    x_shift = np.random.uniform(-max_shift / 2, max_shift / 2)
+    shift_angle = angle + x_shift / max_shift * 2 * .2
+    y_shift = np.random.uniform(-20, 20)
+    shift_matrix = np.float32([[1, 0, x_shift], [0, 1, y_shift]])
+    shift_img = cv2.warpAffine(img, shift_matrix, (img_shape[1],
+            img_shape[0]))
+    if retain_shape:
+        if x_shift > 0:
+            shift_img = shift_img[:, math.ceil(x_shift):, :]
+        elif x_shift < 0:
+            shift_img = shift_img[:, :math.floor(x_shift), :]
+        else:
+            pass
+        if y_shift > 0:
+            shift_img = shift_img[math.ceil(y_shift):, :, :]
+        elif y_shift < 0:
+            shift_img = shift_img[:math.floor(y_shift), :, :]
+        else:
+            pass
+        shift_img = cv2.resize(shift_img, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA)
+    return shift_img, shift_angle
+
 
 def get_test_img():
     """ 3 test images to see how well the model predicts steering angles"""
@@ -93,15 +118,18 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, off
                 else:
                     offset = 0.0
                     position = 'center'
-                labels[count] = next_row.steering + offset
                 weights[count] = weight
                 image = cv2.imread(folder + '//' + next_row[position].strip())
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                angle = next_row.steering + offset
+                labels[count] = angle
                 if augment:
+                    image, angle = shift_image(image, next_row.steering + offset, 100) 
+                    labels[count] = angle
                     check_val = np.random.random()
                     if check_val < 0.5: # 50% of the time, return flipped image
                         image = reverse_image(image)
-                        labels[count] = -(next_row.steering + offset)
+                        labels[count] = angle
                     image = add_bright(image)
                 image = image[55:-25, :, :] # trim off car hood and top of image
                 image = cv2.resize(image, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA) 
@@ -316,5 +344,5 @@ def run_nn():
 
 
 if __name__ == '__main__':
-    #run_nn()
-    explore_nn()
+    run_nn()
+    #explore_nn()

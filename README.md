@@ -1,5 +1,46 @@
 # carnd-cloning
-start.py -> file for creating initial building blocks, will rename to match project requirements later
+
+main.py components:
+
+run_nn - main function. Creates a model, trains it and saves the output json/h5
+
+train_nn_gen: trains an nn model using generator driven data
+    model - nn model to train
+    batch_size - # of images to use per batch
+    n_epoch - # of epochs to run training for
+    img_shape - shape of images to train on
+    offset: (optional) - value to +/- for left/right camera images. default is 0.25
+    lr: (optional) - learning rate to pass to optimizer. default is 0.001
+
+train_nn : trains an nn model with preloaded data
+
+create_nn: creates basic nn model, used for pipecleaning only
+
+create_nn_comma: creates a nn model based on the Comma.AI model
+
+create_nn_nvidia: creates a nn model based on Nvidia model, with added Lambda for normalization and dropout layers added
+
+get_batch_data: generator to return # of images for training model
+    - folder: folder containing data
+    - df: DataFrame with location of images, steering angles
+    - num: number of images/labels to return for batch
+    - img_shape: shape of images to return
+    - augment: (optional) - boolean to decide to do data augmentation. Default is False
+    - threshold: value to be used to determine to include small steering angle images or not. default is 1.0 (100% included)
+    - offset: (optional) - value to +/- for left/right camera images. Default is 0.25
+
+pick_image: returns left, right or center image with equal distribution
+
+add_bright: modify brightness of image by 0.3 - 1.3
+
+preprocess: creates a binary numpy of images for preloaded training function
+
+get_test_img: loads a few test images to evaluate current steering predictions
+
+shift_image: shifts image in both x and y for data augmentation
+
+explore_nn: train multiple models, changing one parameter and saving results to explore the solution space
+
 
 Initial flow:
 - set up a pipeline using smaller dataset loaded into memory, to find any bugs in the preprocessing, data loading, setting up model, etc.
@@ -45,4 +86,5 @@ Experiments:
 		- similar output checking, accuracy
 		- best sim results from run 6/9 - 0.35, 0.5 offset, but only slightly better than previous 0.25 results
 	- very threshold to include images with -0.1 < steering angle < 0.1
-	- initial results with 0 threshold (all small angles excluded) has very low acc
+	- initial results with 0 threshold (all small angles excluded) has very low acc, but predictions on 3 test images are better than higher acc runs!
+	- no significant difference between the runs, except threshold of 0.6 performed worse than the rest
