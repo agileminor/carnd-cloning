@@ -124,7 +124,7 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, off
                 angle = next_row.steering + offset
                 labels[count] = angle
                 if augment:
-                    image, angle = shift_image(image, next_row.steering + offset, 100) 
+                    #image, angle = shift_image(image, next_row.steering + offset, 100) 
                     labels[count] = angle
                     check_val = np.random.random()
                     if check_val < 0.5: # 50% of the time, return flipped image
