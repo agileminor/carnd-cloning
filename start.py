@@ -41,11 +41,11 @@ def preprocess(folder, fname):
     np.save(folder + r'/labels.npy', labels)
   
 def add_bright(img):
-    """ modify brightness of image by 0.2 - 1.2"""
+    """ modify brightness of image by 0.3 - 1.3"""
     img = cv2.cvtColor(img,cv2.COLOR_RGB2HSV)
-    b_adder = .2 + np.random.uniform()
+    b_adder = .3 + np.random.uniform()
     img[:,:,2] = img[:,:,2] * b_adder
-    img = cv2.cvtColor(img, cv2.COLORHSV2RGB)
+    img = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
     return img
 
 
@@ -85,7 +85,7 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, off
                 check_val = np.random.random()
                 weight = 1
             else:
-                check_val = 0.0
+                check_val = -1
                 weight = 10
             if check_val < threshold:
                 if augment:
@@ -102,8 +102,8 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, off
                     if check_val < 0.5: # 50% of the time, return flipped image
                         image = reverse_image(image)
                         labels[count] = -(next_row.steering + offset)
-                    #image = add_bright(image)
-                image = image[:-25, :, :] # trim off car hood
+                    image = add_bright(image)
+                image = image[55:-25, :, :] # trim off car hood and top of image
                 image = cv2.resize(image, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA) 
                 images[count] = image
                 count += 1
@@ -142,16 +142,16 @@ def create_nn_nvidia(input_shape):
                             border_mode='valid',
                             subsample=(1, 1)))
     model.add(ELU())
-    #model.add(Dropout(0.25))
+    model.add(Dropout(0.2))
 
     model.add(Flatten())
 
     model.add(Dense(1164))
     model.add(ELU())
-    #model.add(Dropout(0.25))
+    model.add(Dropout(0.2))
     model.add(Dense(100))
     model.add(ELU())
-    #model.add(Dropout(0.25))
+    model.add(Dropout(0.2))
     model.add(Dense(50))
     model.add(ELU())
     model.add(Dense(10))
@@ -226,30 +226,31 @@ def train_nn(model, train_features, train_labels, batch_size, n_epoch):
     return model, history
 
 
-def train_nn_gen(model, batch_size, n_epoch, img_shape, offset=0.25):
+def train_nn_gen(model, batch_size, n_epoch, img_shape, offset=0.25, lr=0.001,
+        threshold = 1.0):
     """ trains the keras model, uses generator for images, saves checkpoint data"""
     #adm = Adam(lr=0.00001)
-    adm = Adam()
+    adm = Adam(lr=lr)
     log_csv = pd.read_csv(r'../simulator/data/driving_log.csv')
     data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
-                              augment=True, offset=offset)
+                              augment=True, offset=offset, threshold=threshold)
     val_data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
-                              augment=True, offset=offset)
+                              augment=True, offset=offset, threshold=threshold)
     model.compile(loss='mean_squared_error', optimizer=adm,
                   metrics=['accuracy', 'mean_squared_error'])
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
     early_stop = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=4,
                                verbose=1, mode='min')
-    model.fit_generator(data_gen, samples_per_epoch=24320, nb_epoch=n_epoch)
+    model.fit_generator(data_gen, samples_per_epoch=48640, nb_epoch=n_epoch,
             callbacks=[checkpointer, early_stop], validation_data=val_data_gen,
             nb_val_samples=2432)
     return model
 
 
-def load_model(fname, model):
-    model.compile(loss='mean_squared_error', optimizer='adam',
-                  metrics=['accuracy', 'mean_squared_error'])
-    weights = model.load_weights(fname)
+def load_model(fname):
+    json_handle = open(fname + '.json', 'r')
+    model = model_from_json(json_handle.read())
+    model.load_weights(fname + '.h5')
     return model
     
 def export_nn(model, fname):
@@ -262,26 +263,27 @@ def export_nn(model, fname):
 
 def explore_nn():
     """ create models to evaluate different parameter values """
-    input_shape = (100, 200, 3)
+    input_shape = (66, 200, 3)
     batch_size = 128
-    epochs = 10
+    epochs = 5
     test_img, test_label = get_test_img()
     count = 0
-    for offset in np.arange(0, 0.5, 0.05):
-        print('Evaluating offset = {}'.format(offset))
+    for threshold in np.arange(0.0, 1.0, 0.2):
+        print('Evaluating threshold = {}'.format(threshold))
         model = create_nn_nvidia(input_shape)
         print("Done creating model")
         model.summary()
-        model = train_nn_gen(model, batch_size, epochs, input_shape, offset)
+        model = train_nn_gen(model, batch_size, epochs, input_shape,
+                threshold=threshold)
         print("Done training model")
-        export_nn(model, 'model' + str(count)
+        export_nn(model, 'model' + str(count))
         print("Done exporting model")
         for index, fname in enumerate(test_img):
-            image = cv2.imread(folder + '//' + next_row[position].strip())
+            image = cv2.imread(r'../simulator/data' + '//' + fname)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image = image[:-25, :, :]
-            image = cv2.resize(image, (200, 100), interpolation=cv2.INTER_AREA)
-            result = model.predict(image)
+            image = image[55:-25, :, :]
+            image = cv2.resize(image, (input_shape[1], input_shape[0]), interpolation=cv2.INTER_AREA)
+            result = model.predict(image[None, :, :, :], batch_size=1)
             print('Result is {}, actual is {}'.format(result, test_label[index]))
         count += 1
 
@@ -298,20 +300,21 @@ def run_nn():
     model.summary()
     #model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
     batch_size = 128
-    epochs = 10
+    epochs = 5
     model = train_nn_gen(model, batch_size, epochs, input_shape)
     print("Done training model")
     export_nn(model, 'model')
     print("Done exporting model")
     test_img, test_label = get_test_img()
     for index, fname in enumerate(test_img):
-        image = cv2.imread(folder + '//' + next_row[position].strip())
+        image = cv2.imread(r'../simulator/data' + '//' + fname)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = image[:-25, :, :]
-        image = cv2.resize(image, (200, 100), interpolation=cv2.INTER_AREA)
-        result = model.predict(image)
+        image = image[55:-25, :, :]
+        image = cv2.resize(image, (input_shape[1], input_shape[0]), interpolation=cv2.INTER_AREA)
+        result = model.predict(image[None, :, :, :], batch_size=1)
         print('Result is {}, actual is {}'.format(result, test_label[index]))
 
 
 if __name__ == '__main__':
-    run_nn()
+    #run_nn()
+    explore_nn()
