@@ -63,10 +63,10 @@ Current flow:
 	- random horizontal image flip (50% odds of flip)
 	- random brightness modification (0.3 - 1.3 of original image)
 	- use left/right images + steering offset in addition to center image, with even changes of each image being used
-
-- data augmentation to try:
 	- small horizontal shifts with steering offsets
 	- small vertical shifts, to help with slopes
+
+- data augmentation to try:
 	- random shadows, this is mainly for track 2
 
 - other things to try:
@@ -81,10 +81,10 @@ Current flow:
 	- generate more raw data. Currently using Udacity dataset since I don't have a joystick to generate smoother driving. It should be possible to create a working model just using the Udacity data + augmentation
 
 Experiments:
-	- vary steering offset for left/right images from 0 to 0.5
+- vary steering offset for left/right images from 0 to 0.5
 	- results:
 		- similar output checking, accuracy
 		- best sim results from run 6/9 - 0.35, 0.5 offset, but only slightly better than previous 0.25 results
-	- very threshold to include images with -0.1 < steering angle < 0.1
+- vary threshold to include images with -0.1 < steering angle < 0.1
 	- initial results with 0 threshold (all small angles excluded) has very low acc, but predictions on 3 test images are better than higher acc runs!
 	- no significant difference between the runs, except threshold of 0.6 performed worse than the rest
