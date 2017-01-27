@@ -1,6 +1,6 @@
 # carnd-cloning
 
-main.py components:
+model.py components:
 
 run_nn - main function. Creates a model, trains it and saves the output json/h5
 
