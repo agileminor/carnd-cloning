@@ -254,7 +254,7 @@ def train_nn(model, train_features, train_labels, batch_size, n_epoch):
     return model, history
 
 
-def train_nn_gen(model, batch_size, n_epoch, img_shape, offset=0.25, lr=0.001,
+def train_nn_gen(model, batch_size, n_epoch, img_shape, per_epoch, offset=0.25, lr=0.001,
         threshold = 1.0):
     """ trains the keras model, uses generator for images, saves checkpoint data"""
     #adm = Adam(lr=0.00001)
@@ -269,9 +269,9 @@ def train_nn_gen(model, batch_size, n_epoch, img_shape, offset=0.25, lr=0.001,
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
     early_stop = EarlyStopping(monitor='val_mean_squared_error', min_delta=0.0001, patience=4,
                                verbose=1, mode='min')
-    model.fit_generator(data_gen, samples_per_epoch=48640, nb_epoch=n_epoch,
+    model.fit_generator(data_gen, samples_per_epoch=per_epoch, nb_epoch=n_epoch,
             callbacks=[checkpointer, early_stop], validation_data=val_data_gen,
-            nb_val_samples=2432)
+            nb_val_samples=math.floor(per_epoch / 8))
     return model
 
 
@@ -296,13 +296,12 @@ def explore_nn():
     epochs = 5
     test_img, test_label = get_test_img()
     count = 0
-    for threshold in np.arange(0.0, 1.0, 0.2):
-        print('Evaluating threshold = {}'.format(threshold))
+    for per_epoch in np.arange(4096, 4096*12, 2048):
+        print('Evaluating per_epoch = {}'.format(per_epoch))
         model = create_nn_nvidia(input_shape)
         print("Done creating model")
         model.summary()
-        model = train_nn_gen(model, batch_size, epochs, input_shape,
-                threshold=threshold)
+        model = train_nn_gen(model, batch_size, epochs, input_shape, per_epoch)
         print("Done training model")
         export_nn(model, 'model' + str(count))
         print("Done exporting model")
@@ -329,7 +328,7 @@ def run_nn():
     #model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
     batch_size = 128
     epochs = 5
-    model = train_nn_gen(model, batch_size, epochs, input_shape)
+    model = train_nn_gen(model, batch_size, epochs, input_shape, 2048*12)
     print("Done training model")
     export_nn(model, 'model')
     print("Done exporting model")
@@ -344,5 +343,5 @@ def run_nn():
 
 
 if __name__ == '__main__':
-    run_nn()
-    #explore_nn()
+    #run_nn()
+    explore_nn()
