@@ -33,8 +33,6 @@ pick_image: returns left, right or center image with equal distribution
 
 add_bright: modify brightness of image by 0.3 - 1.3
 
-preprocess: creates a binary numpy of images for preloaded training function
-
 get_test_img: loads a few test images to evaluate current steering predictions
 
 shift_image: shifts image in both x and y for data augmentation
@@ -70,14 +68,10 @@ Current flow:
 	- random shadows, this is mainly for track 2
 
 - other things to try:
-	- shift all images to HSV space
-	- differing amounts of steering offset for left/right images
 	- excluding images with small steering angles
 		- possibly train with one setting, then refine by adding or removing small angle images
-	- vary amount of images per epoch
 	- vary amounts of dropout used
 	- vary number of epochs
-	- changing image size. Currently using 200x66 (same as Nvidia model)
 	- generate more raw data. Currently using Udacity dataset since I don't have a joystick to generate smoother driving. It should be possible to create a working model just using the Udacity data + augmentation
 
 Experiments:
@@ -88,3 +82,18 @@ Experiments:
 - vary threshold to include images with -0.1 < steering angle < 0.1
 	- initial results with 0 threshold (all small angles excluded) has very low acc, but predictions on 3 test images are better than higher acc runs!
 	- no significant difference between the runs, except threshold of 0.6 performed worse than the rest
+
+- vary samples per epoch from 4096 to 45056
+	- most models did very poorly, quick turned off the road. Best were 4096, 16384, 32768 samples per epoch. Best overall was 32768, but none were as good as previous best 
+
+- try 64x64 image (instead of 200x66, default Nvidia size)
+	- results no different
+
+- try using HSV instead of RGB
+	- no improvement
+
+- tried adding horizontally shifted images
+	- model performed significantly worse, both in terms of reported acc/loss and simulation
+
+- tried various epochs, all with samples per epoch of 32K
+	- no improvement with different # of epochs, above 8 epochs all output values are the same

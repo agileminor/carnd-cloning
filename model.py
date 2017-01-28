@@ -12,29 +12,16 @@ import tensorflow as tf
 import cv2
 tf.python.control_flow_ops = tf
 
-def shift_image(img, angle, max_shift, retain_shape=False):
+def shift_image(img, angle, max_shift):
     """ shift image by +/- max_shift in x, +/- 20 in y, and adjust steering angle"""
     img_shape = img.shape
-    x_shift = np.random.uniform(-max_shift / 2, max_shift / 2)
-    shift_angle = angle + x_shift / max_shift * 2 * .2
-    y_shift = np.random.uniform(-20, 20)
+    x_shift = np.random.uniform(-max_shift / 2.0, max_shift / 2.0)
+    shift_angle = angle + x_shift / max_shift * .4
+    #y_shift = np.random.uniform(-20, 20)
+    y_shift = 0
     shift_matrix = np.float32([[1, 0, x_shift], [0, 1, y_shift]])
     shift_img = cv2.warpAffine(img, shift_matrix, (img_shape[1],
             img_shape[0]))
-    if retain_shape:
-        if x_shift > 0:
-            shift_img = shift_img[:, math.ceil(x_shift):, :]
-        elif x_shift < 0:
-            shift_img = shift_img[:, :math.floor(x_shift), :]
-        else:
-            pass
-        if y_shift > 0:
-            shift_img = shift_img[math.ceil(y_shift):, :, :]
-        elif y_shift < 0:
-            shift_img = shift_img[:math.floor(y_shift), :, :]
-        else:
-            pass
-        shift_img = cv2.resize(shift_img, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA)
     return shift_img, shift_angle
 
 
@@ -50,21 +37,7 @@ def get_test_img():
     test_labels.append(-0.107229)
     return test_images, test_labels
 
-def preprocess(folder, fname):
-    """ Creates a binary numpy format output of the steering images and
-    angles"""
-    data = pd.read_csv(folder + '//' + fname)
-    zero_data = data[data.steering == 0] # take a smaller sample of more numerous zero angles
-#    zero_data = zero_data.sample(int(0.05 * len(zero_data)))
-    rest_data = data[~(data.steering == 0)]
-    data = rest_data.append(zero_data)
-    data = data.reindex(np.random.permutation(data.index))
-    images = np.array([cv2.cvtColor(cv2.imread(folder + '//' + row.center),
-                      cv2.COLOR_BGR2RGB) for index, row in data.iterrows()])
-    labels = np.array([row.steering for index, row in data.iterrows()])
-    np.save(folder + r'/images.npy', images)
-    np.save(folder + r'/labels.npy', labels)
-  
+
 def add_bright(img):
     """ modify brightness of image by 0.3 - 1.3"""
     img = cv2.cvtColor(img,cv2.COLOR_RGB2HSV)
@@ -122,16 +95,17 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, off
                 image = cv2.imread(folder + '//' + next_row[position].strip())
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 angle = next_row.steering + offset
-                labels[count] = angle
                 if augment:
-                    #image, angle = shift_image(image, next_row.steering + offset, 100) 
-                    labels[count] = angle
+                    max_shift = 50
+                    image, angle = shift_image(image, next_row.steering + offset, max_shift) 
                     check_val = np.random.random()
                     if check_val < 0.5: # 50% of the time, return flipped image
                         image = reverse_image(image)
-                        labels[count] = angle
+                        angle = -angle
                     image = add_bright(image)
-                image = image[55:-25, :, :] # trim off car hood and top of image
+                labels[count] = angle
+                #image = image[40:-25, :, :] # trim off car hood and top of image
+                image = image[40:-25, max_shift:-max_shift, :] # trim off car hood and top of image
                 image = cv2.resize(image, (img_shape[1], img_shape[0]), interpolation=cv2.INTER_AREA) 
                 images[count] = image
                 count += 1
@@ -263,7 +237,7 @@ def train_nn_gen(model, batch_size, n_epoch, img_shape, per_epoch, offset=0.25, 
     data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
                               augment=True, offset=offset, threshold=threshold)
     val_data_gen = get_batch_data(r'../simulator/data', log_csv, batch_size, img_shape, 
-                              augment=True, offset=offset, threshold=threshold)
+                              augment=False, offset=offset, threshold=threshold)
     model.compile(loss='mean_squared_error', optimizer=adm,
                   metrics=['accuracy', 'mean_squared_error'])
     checkpointer = ModelCheckpoint(filepath="checkpoint.h5", verbose=1, save_best_only=True)
@@ -292,23 +266,32 @@ def export_nn(model, fname):
 def explore_nn():
     """ create models to evaluate different parameter values """
     input_shape = (66, 200, 3)
-    batch_size = 128
+    batch_size = 256
     epochs = 5
     test_img, test_label = get_test_img()
     count = 0
-    for per_epoch in np.arange(4096, 4096*12, 2048):
-        print('Evaluating per_epoch = {}'.format(per_epoch))
-        model = create_nn_nvidia(input_shape)
-        print("Done creating model")
-        model.summary()
-        model = train_nn_gen(model, batch_size, epochs, input_shape, per_epoch)
+    model = create_nn_nvidia(input_shape)
+    model.summary()
+    print("Done creating model")
+    #for epoch in np.arange(20):
+    test_thresholds = [0.0, 0.5, 1-1.0/3, 1-1.0/4, 1-1.0/5, 1-1.0/6]
+    test_lr = [0.001, 0.001, 0.001, 0.001, 0.001, 0.0001]
+    while count < 6:
+        current_threshold = test_thresholds[count]
+        current_lr = test_lr[count]
+        print('Evaluating threshold = {}, lr = {}'.format(current_threshold,
+                                                          current_lr))
+        #model = create_nn_nvidia(input_shape)
+        #print("Done creating model")
+        model = train_nn_gen(model, batch_size, 1, input_shape, 32768,
+                threshold=current_threshold, lr=current_lr)
         print("Done training model")
         export_nn(model, 'model' + str(count))
         print("Done exporting model")
         for index, fname in enumerate(test_img):
             image = cv2.imread(r'../simulator/data' + '//' + fname)
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image = image[55:-25, :, :]
+            image = image[40:-25, 50:-50, :]
             image = cv2.resize(image, (input_shape[1], input_shape[0]), interpolation=cv2.INTER_AREA)
             result = model.predict(image[None, :, :, :], batch_size=1)
             print('Result is {}, actual is {}'.format(result, test_label[index]))
@@ -316,19 +299,15 @@ def explore_nn():
 
 
 def run_nn():
-    # load previously prepared data
-    #X_train = np.load("..//simulator//data//images.npy")
-    #y_train = np.load("..//simulator//data//labels.npy")
-    #print("Done loading data")
-    #input_shape = X_train.shape[1:]
     input_shape = (66, 200, 3)
+    #input_shape = (64, 64, 3)
     model = create_nn_nvidia(input_shape)
     print("Done creating model")
     model.summary()
     #model, history = train_nn(model, X_train, y_train, 128, 10) # batch size of 64, 5 epochs
     batch_size = 128
     epochs = 5
-    model = train_nn_gen(model, batch_size, epochs, input_shape, 2048*12)
+    model = train_nn_gen(model, batch_size, epochs, input_shape, 32768)
     print("Done training model")
     export_nn(model, 'model')
     print("Done exporting model")
@@ -336,8 +315,9 @@ def run_nn():
     for index, fname in enumerate(test_img):
         image = cv2.imread(r'../simulator/data' + '//' + fname)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = image[55:-25, :, :]
+        image = image[40:-25, 50:-50, :]
         image = cv2.resize(image, (input_shape[1], input_shape[0]), interpolation=cv2.INTER_AREA)
+        #image = cv2.cvtColor(image,cv2.COLOR_RGB2HSV)
         result = model.predict(image[None, :, :, :], batch_size=1)
         print('Result is {}, actual is {}'.format(result, test_label[index]))
 
