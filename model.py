@@ -95,8 +95,8 @@ def get_batch_data(folder, df, num, img_shape, augment=False, threshold=1.0, off
                 image = cv2.imread(folder + '//' + next_row[position].strip())
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 angle = next_row.steering + offset
+                max_shift = 50
                 if augment:
-                    max_shift = 50
                     image, angle = shift_image(image, next_row.steering + offset, max_shift) 
                     check_val = np.random.random()
                     if check_val < 0.5: # 50% of the time, return flipped image
