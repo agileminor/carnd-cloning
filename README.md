@@ -47,11 +47,7 @@ shift_image: shifts image in both x and y for data augmentation
 ##Current flow:
 - with data augmentation, I'm using more total images. To avoid having to have them in memory at the same time, I've switched to using generators
 
-- best model so far - 64x64 image shape, HSV colour, 48 samples per epoch, 5+ epochs, using later epochs for tuning
-- preprocessing
-	- image is trimmed to drop lower section (with car hood) and upper section (above road)
-	- pixel values are normalized to +/- 0.5 (in a Lambda layer so that same normalization is done to training/simulation images)
-	- training and simulator images are changed to HSV, due to better results with HSV images
+- best model so far - 64x64 image shape, HSV colour, 48K samples per epoch, 5+ epochs, using later epochs for tuning
 
 - model modifications
 	- using Nvidia model from https://arxiv.org/pdf/1604.07316v1.pdf
@@ -59,11 +55,19 @@ shift_image: shifts image in both x and y for data augmentation
 		- added dropout layers to help with overfitting
 		- added a Lambda layer to handle data normalization
 
-- currently added data augmentation
-	- random horizontal image flip (50% odds of flip)
-	- random brightness modification (0.3 - 1.3 of original image)
+- image pipeline
 	- use left/right images + steering offset in addition to center image, with even changes of each image being used
+![initial image](/saved_img/starting_img.jpg?raw=true "Starting Image")
 	- small horizontal shifts with steering offsets
+![shifted image](/saved_img/shifted_image.jpg?raw=true "Shifted Image")
+	- random horizontal image flip (50% odds of flip) add image
+![reverse image](/saved_img/rev_image.jpg?raw=true "Reversed Image")
+	- training and simulator images are changed to HSV, due to better results with HSV images
+![hsv image](/saved_img/hsv_image.jpg?raw=true "HSV Image")
+	- image is trimmed to drop lower section (with car hood) and upper section (above road)
+![trim image](/saved_img/trim_image.jpg?raw=true "Trimmed Image")
+	- image is re-sized to 64x64
+![final image](/saved_img/final_image.jpg?raw=true "Final Image")
 
 - data augmentation not tried:
 	- random shadows, this is mainly for track 2
