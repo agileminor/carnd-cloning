@@ -271,7 +271,7 @@ def explore_nn():
     print("Done creating model")
     print("final run, 10 epochs with increased low angle threshold/reduced learning rate")
     while count < 10:
-        if count < 5:
+        if count < 8:
             current_threshold = 0.8
             current_lr = 0.001
         else:

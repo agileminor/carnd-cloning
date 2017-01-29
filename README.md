@@ -56,7 +56,7 @@ shift_image: shifts image in both x and y for data augmentation
 		- added a Lambda layer to handle data normalization
 
 - image pipeline
-	- use left/right images + steering offset in addition to center image, with even changes of each image being used
+	- use left/right images + steering offset in addition to center image, with even chances for each image
 ![initial image](/saved_img/starting_image.jpg?raw=true "Starting Image")
 	- small horizontal shifts with steering offsets
 ![shifted image](/saved_img/shifted_image.jpg?raw=true "Shifted Image")
@@ -67,6 +67,7 @@ shift_image: shifts image in both x and y for data augmentation
 	- image is trimmed to drop lower section (with car hood) and upper section (above road)
 ![trim image](/saved_img/trim_image.jpg?raw=true "Trimmed Image")
 	- image is re-sized to 64x64
+
 ![final image](/saved_img/final_image.jpg?raw=true "Final Image")
 
 - data augmentation not tried:
