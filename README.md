@@ -57,7 +57,7 @@ shift_image: shifts image in both x and y for data augmentation
 
 - image pipeline
 	- use left/right images + steering offset in addition to center image, with even changes of each image being used
-![initial image](/saved_img/starting_img.jpg?raw=true "Starting Image")
+![initial image](/saved_img/starting_image.jpg?raw=true "Starting Image")
 	- small horizontal shifts with steering offsets
 ![shifted image](/saved_img/shifted_image.jpg?raw=true "Shifted Image")
 	- random horizontal image flip (50% odds of flip) add image
