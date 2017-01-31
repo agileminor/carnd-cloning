@@ -1,4 +1,6 @@
-# carnd-cloning
+# Intro
+
+This project does behavioral cloning for a driving simulator, starting with a series of images and steering angles and using a neural network to produce a model that can predict correct steering angles to drive a car around a track in the simulator
 
 ##model.py components:
 
